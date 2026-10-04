@@ -89,9 +89,9 @@ std::string Prefab::GetTitleLabel() const
    {
       if (mPresentationApplied)
          return mPrefabName;
-      return "prefab: " + mPrefabName;
+      return std::string(Name()) + ": " + mPrefabName;
    }
-   return "prefab";
+   return Name();
 }
 
 void Prefab::Poll()
