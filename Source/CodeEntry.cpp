@@ -1005,6 +1005,14 @@ void CodeEntry::OnKeyPressed(int key, bool isRepeat)
    {
       MoveCaretToStart();
    }
+   else if (key == juce::KeyPress::pageUpKey)
+   {
+      MoveCaretByPage(true);
+   }
+   else if (key == juce::KeyPress::pageDownKey)
+   {
+      MoveCaretByPage(false);
+   }
    else if (toupper(key) == 'R' && GetKeyModifiers() == kModifier_Command)
    {
       Publish();
@@ -1242,6 +1250,27 @@ void CodeEntry::MoveCaretToNextToken(bool backwards)
    if (backwards)
       amount *= -1;
    MoveCaret(GetCaretPosition(MAX(0, coords.x + amount), coords.y));
+}
+
+void CodeEntry::MoveCaretByPage(bool up)
+{
+   if (mCharHeight <= 0)
+      return;
+
+   int pageLines = MAX(1, int(mHeight / mCharHeight) - 1);
+   if (up)
+      pageLines *= -1;
+
+   //scroll the view by a page too, so the caret keeps its place on screen
+   int numLines = (int)GetLines(false).size();
+   float maxScrollY = MAX(0, (numLines - int(mHeight / mCharHeight)) * mCharHeight);
+   mScroll.y = ofClamp(mScroll.y + pageLines * mCharHeight, 0, maxScrollY);
+
+   ofVec2f coords = GetCaretCoords(mCaretPosition);
+   int row = ofClamp(coords.y + pageLines, 0, numLines - 1);
+   MoveCaret(GetCaretPosition(coords.x, row));
+
+   OnCodeUpdated();
 }
 
 bool CodeEntry::MouseMoved(float x, float y)
