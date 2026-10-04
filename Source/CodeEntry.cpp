@@ -691,6 +691,14 @@ void CodeEntry::OnPythonInit()
           pass
            
 
+   #output has one entry per character, but the code is drawn byte by byte (utf-8),
+   #so repeat each entry for every byte of its character to keep them aligned
+   expanded = []
+   for i, value in enumerate(output):
+      if i < len(text):
+         expanded += [value] * len(text[i].encode('utf-8'))
+   output = expanded
+
    #print(output)
    return output)";
 
