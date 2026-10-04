@@ -70,8 +70,8 @@ void Prefab::CreateUIControls()
 std::string Prefab::GetTitleLabel() const
 {
    if (mPrefabName != "")
-      return "prefab: " + mPrefabName;
-   return "prefab";
+      return std::string(Name()) + ": " + mPrefabName;
+   return Name();
 }
 
 void Prefab::Poll()
