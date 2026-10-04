@@ -118,9 +118,21 @@ private:
 
    void OnClicked(float x, float y, bool right) override;
    bool MouseMoved(float x, float y) override;
+   void MouseReleased() override;
    bool MouseScrolled(float x, float y, float scrollX, float scrollY, bool isSmoothScroll, bool isInvertedScroll) override;
 
    static bool sWarnJediNotInstalled;
+
+   enum class Scrollbar
+   {
+      None,
+      Vertical,
+      Horizontal
+   };
+
+   void GetScrollContentSize(float& width, float& height);
+   Scrollbar GetScrollbarAt(float x, float y);
+   void UpdateScrollbarDrag(float x, float y);
 
    struct UndoBufferEntry
    {
@@ -165,6 +177,10 @@ private:
    bool mHasError{ false };
    int mErrorLine{ -1 };
    ofVec2f mScroll;
+   Scrollbar mScrollbarHover{ Scrollbar::None };
+   Scrollbar mScrollbarDrag{ Scrollbar::None };
+   float mScrollbarDragOffset{ 0 };
+   ofVec2f mScrollbarDragContentSize;
    std::vector<int> mSyntaxHighlightMapping;
    /*
     * For syntax highlighting we have both a static (system wide) and mDo (per insdtance)
