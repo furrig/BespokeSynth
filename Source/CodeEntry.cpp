@@ -413,28 +413,23 @@ void CodeEntry::Render()
       DrawTextNormal(Name(), mX, mY);
    }*/
 
-   const auto& lines = GetLines(false);
-   float totalHeight = MAX(lines.size() * mCharHeight, mScroll.y + mHeight);
+   float totalWidth, totalHeight;
+   GetScrollContentSize(totalWidth, totalHeight);
    if (mScroll.y > 0 || totalHeight > mHeight)
    {
+      bool highlight = mScrollbarHover == Scrollbar::Vertical || mScrollbarDrag == Scrollbar::Vertical;
       ofPushStyle();
       ofFill();
-      ofSetColor(255, 255, 255, .5f * gModuleDrawAlpha);
+      ofSetColor(255, 255, 255, (highlight ? .9f : .5f) * gModuleDrawAlpha);
       ofRect(mX + mWidth - 6, mY + (mScroll.y / totalHeight) * mHeight, 3, (mHeight / totalHeight) * mHeight);
       ofPopStyle();
    }
-   float totalWidth = mWidth;
-   for (const auto& line : lines)
-   {
-      float lineWidth = line.length() * mCharWidth;
-      if (lineWidth > totalWidth)
-         totalWidth = lineWidth;
-   }
    if (mScroll.x > 0 || totalWidth > mWidth)
    {
+      bool highlight = mScrollbarHover == Scrollbar::Horizontal || mScrollbarDrag == Scrollbar::Horizontal;
       ofPushStyle();
       ofFill();
-      ofSetColor(255, 255, 255, .5f * gModuleDrawAlpha);
+      ofSetColor(255, 255, 255, (highlight ? .9f : .5f) * gModuleDrawAlpha);
       ofRect(mX + (mScroll.x / totalWidth) * mWidth, mY + mHeight - 6, (mWidth / totalWidth) * mWidth, 3);
       ofPopStyle();
    }
@@ -772,6 +767,27 @@ void CodeEntry::OnClicked(float x, float y, bool right)
 {
    if (right)
       return;
+
+   Scrollbar scrollbar = GetScrollbarAt(x, y);
+   if (scrollbar != Scrollbar::None)
+   {
+      mScrollbarDrag = scrollbar;
+      GetScrollContentSize(mScrollbarDragContentSize.x, mScrollbarDragContentSize.y);
+
+      bool vertical = (scrollbar == Scrollbar::Vertical);
+      float pos = vertical ? y : x;
+      float trackLength = vertical ? mHeight : mWidth;
+      float total = vertical ? mScrollbarDragContentSize.y : mScrollbarDragContentSize.x;
+      float thumbStart = (vertical ? mScroll.y : mScroll.x) / total * trackLength;
+      float thumbLength = trackLength / total * trackLength;
+      if (pos >= thumbStart && pos <= thumbStart + thumbLength)
+         mScrollbarDragOffset = pos - thumbStart; //grabbed the thumb, keep it under the mouse
+      else
+         mScrollbarDragOffset = thumbLength / 2; //clicked the track, center the thumb on the mouse
+
+      UpdateScrollbarDrag(x, y);
+      return;
+   }
 
    float col = GetColForX(x);
    float row = GetRowForY(y);
@@ -1285,7 +1301,71 @@ bool CodeEntry::MouseMoved(float x, float y)
 {
    mHovered = TestHover(x, y);
    CheckHover(x, y);
+
+   if (mScrollbarDrag != Scrollbar::None)
+   {
+      UpdateScrollbarDrag(x, y);
+      return true;
+   }
+
+   mScrollbarHover = mHovered ? GetScrollbarAt(x, y) : Scrollbar::None;
    return false;
+}
+
+void CodeEntry::MouseReleased()
+{
+   mScrollbarDrag = Scrollbar::None;
+}
+
+namespace
+{
+   const float kScrollbarGrabSize = 8;
+}
+
+void CodeEntry::GetScrollContentSize(float& width, float& height)
+{
+   const auto& lines = GetLines(false);
+   height = MAX(lines.size() * mCharHeight, mScroll.y + mHeight);
+   width = MAX(mWidth, mScroll.x + mWidth);
+   for (const auto& line : lines)
+   {
+      float lineWidth = line.length() * mCharWidth;
+      if (lineWidth > width)
+         width = lineWidth;
+   }
+}
+
+CodeEntry::Scrollbar CodeEntry::GetScrollbarAt(float x, float y)
+{
+   if (x < 0 || y < 0 || x > mWidth || y > mHeight)
+      return Scrollbar::None;
+
+   float totalWidth, totalHeight;
+   GetScrollContentSize(totalWidth, totalHeight);
+   if ((mScroll.y > 0 || totalHeight > mHeight) && x >= mWidth - kScrollbarGrabSize)
+      return Scrollbar::Vertical;
+   if ((mScroll.x > 0 || totalWidth > mWidth) && y >= mHeight - kScrollbarGrabSize)
+      return Scrollbar::Horizontal;
+   return Scrollbar::None;
+}
+
+void CodeEntry::UpdateScrollbarDrag(float x, float y)
+{
+   //content size is captured when the drag starts, so the thumb doesn't change size under the mouse
+   if (mScrollbarDrag == Scrollbar::Vertical)
+   {
+      float total = mScrollbarDragContentSize.y;
+      mScroll.y = ofClamp((y - mScrollbarDragOffset) / mHeight * total, 0, MAX(0, total - mHeight));
+   }
+   else if (mScrollbarDrag == Scrollbar::Horizontal)
+   {
+      float total = mScrollbarDragContentSize.x;
+      mScroll.x = ofClamp((x - mScrollbarDragOffset) / mWidth * total, 0, MAX(0, total - mWidth));
+   }
+
+   OnCodeUpdated();
+
+   mWantToShowAutocomplete = false;
 }
 
 bool CodeEntry::MouseScrolled(float x, float y, float scrollX, float scrollY, bool isSmoothScroll, bool isInvertedScroll)
