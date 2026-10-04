@@ -106,6 +106,7 @@ private:
    void MoveCaretToStart();
    void MoveCaretToEnd();
    void MoveCaretToNextToken(bool backwards);
+   void MoveCaretByPage(bool up);
    void Undo();
    void Redo();
    void UpdateString(std::string newString);
