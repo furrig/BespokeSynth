@@ -1029,16 +1029,7 @@ void ScriptModule::ButtonClicked(ClickButton* button, double time)
             return;
          }
 
-         RefreshScriptFiles();
-
-         for (size_t i = 0; i < mScriptFilePaths.size(); ++i)
-         {
-            if (mScriptFilePaths[i] == path)
-            {
-               mLoadScriptIndex = (int)i;
-               break;
-            }
-         }
+         SetLoadedScriptPath(path);
       }
    }
 
@@ -1046,8 +1037,7 @@ void ScriptModule::ButtonClicked(ClickButton* button, double time)
    {
       if (mLoadScriptIndex >= 0 && mLoadScriptIndex < (int)mScriptFilePaths.size())
       {
-         mLoadedScriptPath = mScriptFilePaths[mLoadScriptIndex];
-         File resourceFile = File(mLoadedScriptPath);
+         File resourceFile = File(mScriptFilePaths[mLoadScriptIndex]);
 
          if (!resourceFile.existsAsFile())
          {
@@ -1063,7 +1053,7 @@ void ScriptModule::ButtonClicked(ClickButton* button, double time)
             return;
          }
 
-         mLoadedScriptFiletime = resourceFile.getLastModificationTime();
+         SetLoadedScriptPath(resourceFile.getFullPathName().toStdString());
 
          std::string text = input->readString().toStdString();
          ofStringReplace(text, "\r", "");
@@ -1131,6 +1121,31 @@ void ScriptModule::RefreshScriptFiles()
    {
       mLoadScriptSelector->AddLabel(script, (int)mScriptFilePaths.size());
       mScriptFilePaths.push_back(ofToDataPath("scripts/" + script));
+   }
+}
+
+void ScriptModule::SetLoadedScriptPath(const std::string& path)
+{
+   mLoadedScriptPath = path;
+   mModuleSaveData.SetString("script_file", path);
+   if (!path.empty())
+      mLoadedScriptFiletime = File(path).getLastModificationTime();
+   SelectLoadedScriptInDropdown();
+}
+
+void ScriptModule::SelectLoadedScriptInDropdown()
+{
+   if (mLoadedScriptPath.empty())
+      return;
+
+   RefreshScriptFiles();
+   for (size_t i = 0; i < mScriptFilePaths.size(); ++i)
+   {
+      if (File(mScriptFilePaths[i]) == File(mLoadedScriptPath))
+      {
+         mLoadScriptIndex = (int)i;
+         break;
+      }
    }
 }
 
@@ -1558,6 +1573,7 @@ void ScriptModule::LoadLayout(const ofxJSONElement& moduleInfo)
                                  }
                               });
    mModuleSaveData.LoadBool("hotload_script_files", moduleInfo, false);
+   mModuleSaveData.LoadString("script_file", moduleInfo, "");
    mModuleSaveData.LoadBool("draw_bound_module_connections", moduleInfo, true);
 
    SetUpFromSaveData();
@@ -1595,6 +1611,8 @@ void ScriptModule::SetUpFromSaveData()
    }
 
    mHotloadScripts = mModuleSaveData.GetBool("hotload_script_files");
+   if (mModuleSaveData.GetString("script_file") != mLoadedScriptPath)
+      SetLoadedScriptPath(mModuleSaveData.GetString("script_file"));
    mDrawBoundModuleConnections = mModuleSaveData.GetBool("draw_bound_module_connections");
 }
 
@@ -1643,6 +1661,9 @@ void ScriptModule::LoadState(FileStreamIn& in, int rev)
    in >> w;
    in >> h;
    Resize(w, h);
+
+   //the dropdown index restored above may be stale if files were added to or removed from the scripts folder
+   SelectLoadedScriptInDropdown();
 
    juce::String checksum = GetScriptChecksum();
    juce::File trusted_python_scripts = File(ofToDataPath("internal/trusted_python_scripts"));
