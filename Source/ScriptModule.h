@@ -150,6 +150,8 @@ private:
    bool IsNonWhitespace(std::string line);
    void DrawTimer(int lineNum, double startTime, double endTime, ofColor color, bool filled);
    void RefreshScriptFiles();
+   void SetLoadedScriptPath(const std::string& path);
+   void SelectLoadedScriptInDropdown();
    void RefreshStyleFiles();
    void Reset();
    juce::String GetScriptChecksum() const;
