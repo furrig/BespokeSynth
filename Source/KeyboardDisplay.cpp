@@ -320,7 +320,7 @@ ofRectangle KeyboardDisplay::GetKeyboardKeyRect(int pitch, bool& isBlackKey, con
 
 bool KeyboardDisplay::ShouldConsumeKey(int key)
 {
-   if (mEnabled && mAllowHoverTypingInput)
+   if (mEnabled && mAllowHoverTypingInput && (GetKeyModifiers() & kModifier_Command) == 0)
    {
       key = KeyToLower(key);
       QwertyToPitchResponse res = QwertyToPitchMapping::GetPitchForComputerKey(key);
