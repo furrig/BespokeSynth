@@ -1195,7 +1195,7 @@ void ModularSynth::KeyPressed(int key, bool isRepeat)
       {
          TheSynth->CopyTextToClipboard(ofToString(gHoveredUIControl->GetValue()));
       }
-      else if (key != ' ' && key != OF_KEY_TAB && key != '`' && key < CHAR_MAX && juce::CharacterFunctions::isPrintable((char)key) && (GetKeyModifiers() & kModifier_Alt) == false)
+      else if (key != ' ' && key != OF_KEY_TAB && key != '`' && key < CHAR_MAX && juce::CharacterFunctions::isPrintable((char)key) && (GetKeyModifiers() & (kModifier_Alt | kModifier_Command)) == 0)
       {
          gHoveredUIControl->AttemptTextInput();
       }
@@ -1244,9 +1244,10 @@ void ModularSynth::KeyPressed(int key, bool isRepeat)
          gHoveredModule->TogglePinned();
    }
 
-   if (key == '`' && !isRepeat)
+   //cmd-k is an alternative for keyboard layouts where ` is hard to type
+   if ((key == '`' || (key == 'k' && GetKeyModifiers() == kModifier_Command)) && !isRepeat)
    {
-      if (GetKeyModifiers() == kModifier_Shift)
+      if (key == '`' && GetKeyModifiers() == kModifier_Shift)
       {
          TriggerClapboard();
       }
