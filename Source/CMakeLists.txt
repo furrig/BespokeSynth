@@ -28,6 +28,9 @@ if(MSVC)
 else()
     if (APPLE)
         target_compile_options(BespokeSynth PRIVATE -Wshorten-64-to-32)
+        # don't export our juce symbols: dyld coalesces weak definitions across images, so plugins built with a
+        # different juce version would otherwise bind to our statics (e.g. the Timer::TimerThread singleton) and crash
+        target_link_options(BespokeSynth PRIVATE "LINKER:-unexported_symbol,*4juce*")
     endif()
     if(BESPOKE_WERROR)
         target_compile_options(BespokeSynth PRIVATE -Werror)
