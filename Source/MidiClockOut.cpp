@@ -97,33 +97,38 @@ void MidiClockOut::OnTransportAdvanced(float amount)
 {
    if (mEnabled)
    {
-      int pulsesPerBeat = 24;
+      // MIDI clock counts 24 pulses per quarter note, whatever the time signature
+      int pulsesPerQuarter = 24;
       switch (mMultiplier)
       {
-         case ClockMultiplier::Quarter: pulsesPerBeat /= 4; break;
-         case ClockMultiplier::Half: pulsesPerBeat /= 2; break;
+         case ClockMultiplier::Quarter: pulsesPerQuarter /= 4; break;
+         case ClockMultiplier::Half: pulsesPerQuarter /= 2; break;
          case ClockMultiplier::One: break;
-         case ClockMultiplier::Two: pulsesPerBeat *= 2; break;
-         case ClockMultiplier::Four: pulsesPerBeat *= 4; break;
+         case ClockMultiplier::Two: pulsesPerQuarter *= 2; break;
+         case ClockMultiplier::Four: pulsesPerQuarter *= 4; break;
       }
-      int pulsesPerMeasure = TheTransport->GetTimeSigTop() * pulsesPerBeat;
+      double pulsesPerMeasure = pulsesPerQuarter * TheTransport->GetTimeSigTop() * 4.0 / TheTransport->GetTimeSigBottom();
 
       double oldPulse = TheTransport->GetMeasureTime(gTime) * pulsesPerMeasure;
       double newPulse = TheTransport->GetMeasureTime(NextBufferTime(false)) * pulsesPerMeasure;
       int pulses = int(floor(newPulse) - floor(oldPulse));
       double distToFirstPulse = 1 - fmod(oldPulse, 1);
-      double pulseMs = TheTransport->GetDuration(kInterval_4n) / pulsesPerBeat;
+      double pulseMs = TheTransport->MsPerBar() / pulsesPerMeasure;
       for (int i = 0; i < pulses; ++i)
       {
-         if (mClockStartQueued && (int(oldPulse) + i) % pulsesPerMeasure == 0)
+         double time = gTime + (distToFirstPulse + i) * pulseMs;
+         if (mClockStartQueued)
          {
-            mDevice.SendMessage(gTime + (distToFirstPulse + i) * pulseMs, juce::MidiMessage::midiStart());
-            mClockStartQueued = false;
+            // pulse i of this buffer is pulse floor(oldPulse) + 1 + i
+            double measure = (floor(oldPulse) + 1 + i) / pulsesPerMeasure;
+            if (fabs(measure - std::round(measure)) < 1e-6)
+            {
+               // start right before the downbeat's pulse, which is the first beat for the receiver
+               mDevice.SendMessage(time, juce::MidiMessage::midiStart());
+               mClockStartQueued = false;
+            }
          }
-         else
-         {
-            mDevice.SendMessage(gTime + (distToFirstPulse + i) * pulseMs, juce::MidiMessage::midiClock());
-         }
+         mDevice.SendMessage(time, juce::MidiMessage::midiClock());
       }
    }
 }
