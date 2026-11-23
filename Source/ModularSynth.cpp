@@ -3466,7 +3466,7 @@ void ModularSynth::AddRecentFile(std::string file, bool saved)
          }
       }
 
-      while (mWorkspaceData["recent_files"].size() > 10)
+      while (mWorkspaceData["recent_files"].size() >= WelcomeScreen::kMaxRecentFiles)
          mWorkspaceData["recent_files"].removeIndex(0, nullptr);
    }
    ofxJSONElement fileInfo;

@@ -90,14 +90,6 @@ void WelcomeScreen::CreateUIControls()
    mHeight = uiScreenHeight - 150;
    SetPosition(uiScreenWidth / 2 - mWidth / 2, uiScreenHeight / 2 - mHeight / 2);
 
-   float saveStateButtonWidth = (mWidth - (kSaveStateButtonStartX * 2)) / 5 - kSaveStateButtonPadX;
-   float saveStateButtonHeight = saveStateButtonWidth * .9f;
-
-   const int kMaxDesiredFiles = 10;
-
-   int x = kSaveStateButtonStartX;
-   int y = kSaveStateButtonStartY + kSaveStateButtonPadY;
-
    using namespace juce;
 
    ofxJSONElement workspaceData;
@@ -138,7 +130,7 @@ void WelcomeScreen::CreateUIControls()
       }
    }
 
-   if (mRecentFiles.size() < kMaxDesiredFiles)
+   if (mRecentFiles.size() < kMaxRecentFiles)
    {
       File dir(ofToDataPath("savestate"));
       Array<File> files;
@@ -149,7 +141,7 @@ void WelcomeScreen::CreateUIControls()
                    return lhs.getLastModificationTime().toMilliseconds() > rhs.getLastModificationTime().toMilliseconds();
                 });
 
-      for (int i = 0; i < files.size() && mRecentFiles.size() < kMaxDesiredFiles; ++i)
+      for (int i = 0; i < files.size() && mRecentFiles.size() < kMaxRecentFiles; ++i)
       {
          if (files[i].getFileExtension() != ".bsk")
             continue;
@@ -164,6 +156,32 @@ void WelcomeScreen::CreateUIControls()
          mRecentFiles.push_back(recentFile);
       }
    }
+
+   //use the largest buttons that let all of the files fit, without making them too small to be readable
+   const int kMinColumns = 5;
+   const float kMinButtonWidth = 160;
+   auto getButtonWidth = [this](int columns)
+   {
+      return (mWidth - (kSaveStateButtonStartX * 2)) / columns - kSaveStateButtonPadX;
+   };
+   auto getButtonHeight = [](float width)
+   {
+      return width * .9f;
+   };
+   int columns = kMinColumns;
+   while (getButtonWidth(columns + 1) >= kMinButtonWidth)
+   {
+      float availableHeight = mHeight - kSaveStateButtonStartY - kSaveStateButtonPadY;
+      int rows = int(availableHeight / (getButtonHeight(getButtonWidth(columns)) + kSaveStateButtonPadY));
+      if (rows * columns >= (int)mRecentFiles.size())
+         break;
+      ++columns;
+   }
+   float saveStateButtonWidth = getButtonWidth(columns);
+   float saveStateButtonHeight = getButtonHeight(saveStateButtonWidth);
+
+   int x = kSaveStateButtonStartX;
+   int y = kSaveStateButtonStartY + kSaveStateButtonPadY;
 
    int i = 1;
    for (auto& recentFile : mRecentFiles)

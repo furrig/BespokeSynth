@@ -70,6 +70,7 @@ public:
 
    static constexpr int kScreenshotWidth = 256;
    static constexpr int kScreenshotHeight = 200;
+   static constexpr int kMaxRecentFiles = 20;
 
 private:
    //IDrawableModule
