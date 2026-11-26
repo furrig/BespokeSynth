@@ -1,4 +1,4 @@
-# What's new in this build (combined-fixes)
+# What's new in this build (main-custom)
 
 This build is Bespoke Synth from the official `main` branch, up to commit `3278a2e9` "improve performance when drawing long zoomed-out samples (#2168)" from November 26, 2026. It adds the fixes and small improvements below.
 
