@@ -41,8 +41,9 @@ Before, if a script was loaded from a file with **hotload** turned on, reopening
 The patch now remembers the script file, so hotload keeps working after you reopen it. The script dropdown also still points to the right file when you've added or removed files in your scripts folder since saving.
 
 ### Script editor improvements
+- **Select text with the mouse.** Click and drag to select code, just like in any text editor. If you drag past the top or bottom edge, the code keeps scrolling, faster the further away the mouse is. **Double-click** selects a word, and **triple-click** selects the whole line. Keep the mouse button held after a double- or triple-click to extend the selection word by word or line by line. **Shift-click** extends the current selection.
 - **Page Up / Page Down** move through the code one screen at a time. Hold **Shift** to select text while doing so.
-- **The scrollbars can be dragged.** Grab a scrollbar to scroll through long or wide scripts, or click anywhere along it to jump there. Scrollbars light up when the mouse is over them.
+- **The scrollbars can be dragged.** Grab a scrollbar to scroll through long or wide scripts, or click anywhere along it to jump there. Scrollbars are twice as thick as before, so they're easier to see and grab, and they light up when the mouse is over them. Clicking a scrollbar keeps your text selection.
 - **Fixed syntax colouring with special characters.** A non-English character, an accent, an emoji or a long dash (—) in a script used to scramble the colours for the rest of the script, and some characters were missing from the screen. All text now shows correctly with the right colours.
 
 ---

@@ -135,6 +135,20 @@ private:
    Scrollbar GetScrollbarAt(float x, float y);
    void UpdateScrollbarDrag(float x, float y);
 
+   enum class SelectionUnit
+   {
+      Character,
+      Word,
+      Line
+   };
+
+   int GetCaretPositionForMouse(float x, float y);
+   void GetWordRange(int pos, int& start, int& end) const;
+   void GetLineRange(int pos, int& start, int& end) const;
+   void GetSelectionUnitRange(int pos, int& start, int& end) const;
+   void UpdateMouseSelection(float x, float y);
+   void UpdateMouseSelectionAutoscroll();
+
    struct UndoBufferEntry
    {
       std::string mString;
@@ -182,6 +196,15 @@ private:
    Scrollbar mScrollbarDrag{ Scrollbar::None };
    float mScrollbarDragOffset{ 0 };
    ofVec2f mScrollbarDragContentSize;
+   bool mMouseSelecting{ false };
+   SelectionUnit mMouseSelectionUnit{ SelectionUnit::Character };
+   int mMouseSelectionAnchorStart{ 0 }; //range of the word/line that was first clicked, kept selected while dragging
+   int mMouseSelectionAnchorEnd{ 0 };
+   ofVec2f mLastMousePos;
+   double mLastAutoscrollMs{ 0 };
+   double mLastClickTime{ -9999 };
+   ofVec2f mLastClickPos{ FLT_MAX, FLT_MAX };
+   int mClickCount{ 0 };
    std::vector<int> mSyntaxHighlightMapping;
    /*
     * For syntax highlighting we have both a static (system wide) and mDo (per insdtance)

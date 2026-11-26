@@ -53,6 +53,13 @@ namespace py = pybind11;
 #endif
 
 //static
+namespace
+{
+   const float kScrollbarThickness = 6;
+   const float kScrollbarMargin = 3; //gap between the scrollbar and the edge of the editor
+   const float kScrollbarGrabSize = kScrollbarThickness + kScrollbarMargin * 2;
+}
+
 bool CodeEntry::sWarnJediNotInstalled = false;
 bool CodeEntry::sDoPythonAutocomplete = false;
 bool CodeEntry::sDoSyntaxHighlighting = false;
@@ -76,6 +83,8 @@ CodeEntry::~CodeEntry()
 
 void CodeEntry::Poll()
 {
+   UpdateMouseSelectionAutoscroll();
+
    if (mCodeUpdated)
    {
       if (mDoSyntaxHighlighting && sDoSyntaxHighlighting)
@@ -429,7 +438,7 @@ void CodeEntry::Render()
       ofPushStyle();
       ofFill();
       ofSetColor(255, 255, 255, (highlight ? .9f : .5f) * gModuleDrawAlpha);
-      ofRect(mX + mWidth - 6, mY + (mScroll.y / totalHeight) * mHeight, 3, (mHeight / totalHeight) * mHeight);
+      ofRect(mX + mWidth - kScrollbarMargin - kScrollbarThickness, mY + (mScroll.y / totalHeight) * mHeight, kScrollbarThickness, (mHeight / totalHeight) * mHeight);
       ofPopStyle();
    }
    if (mScroll.x > 0 || totalWidth > mWidth)
@@ -438,7 +447,7 @@ void CodeEntry::Render()
       ofPushStyle();
       ofFill();
       ofSetColor(255, 255, 255, (highlight ? .9f : .5f) * gModuleDrawAlpha);
-      ofRect(mX + (mScroll.x / totalWidth) * mWidth, mY + mHeight - 6, (mWidth / totalWidth) * mWidth, 3);
+      ofRect(mX + (mScroll.x / totalWidth) * mWidth, mY + mHeight - kScrollbarMargin - kScrollbarThickness, (mWidth / totalWidth) * mWidth, kScrollbarThickness);
       ofPopStyle();
    }
 
@@ -796,14 +805,191 @@ void CodeEntry::OnClicked(float x, float y, bool right)
          mScrollbarDragOffset = thumbLength / 2; //clicked the track, center the thumb on the mouse
 
       UpdateScrollbarDrag(x, y);
+      MakeActive(); //every click clears keyboard focus, and the selection is only shown while focused
       return;
    }
 
-   float col = GetColForX(x);
-   float row = GetRowForY(y);
-   MoveCaret(GetCaretPosition(col, row));
+   //count clicks at roughly the same spot: 1 = place caret, 2 = select word, 3 = select line
+   const double kMultiClickMs = 400;
+   const float kMaxMultiClickDistance = 4;
+   if (gTime - mLastClickTime < kMultiClickMs && mLastClickPos.distanceSquared(ofVec2f(x, y)) < kMaxMultiClickDistance * kMaxMultiClickDistance)
+      mClickCount = mClickCount % 3 + 1;
+   else
+      mClickCount = 1;
+   mLastClickTime = gTime;
+   mLastClickPos.set(x, y);
+
+   int pos = GetCaretPositionForMouse(x, y);
+   if (mClickCount == 1)
+   {
+      mMouseSelectionUnit = SelectionUnit::Character;
+      MoveCaret(pos); //shift-click extends the selection
+      mMouseSelectionAnchorStart = mMouseSelectionAnchorEnd = mCaretPosition2;
+   }
+   else
+   {
+      mMouseSelectionUnit = (mClickCount == 2) ? SelectionUnit::Word : SelectionUnit::Line;
+      GetSelectionUnitRange(pos, mMouseSelectionAnchorStart, mMouseSelectionAnchorEnd);
+      mCaretPosition2 = mMouseSelectionAnchorStart;
+      MoveCaret(mMouseSelectionAnchorEnd, false);
+      mCaretPosition2 = mMouseSelectionAnchorStart;
+   }
+
+   mMouseSelecting = true;
+   mLastMousePos.set(x, y);
+   mLastAutoscrollMs = juce::Time::getMillisecondCounterHiRes();
+   mWantToShowAutocomplete = false;
 
    MakeActive();
+}
+
+int CodeEntry::GetCaretPositionForMouse(float x, float y)
+{
+   return GetCaretPosition(GetColForX(x), GetRowForY(y));
+}
+
+namespace
+{
+   enum class CharClass
+   {
+      Word,
+      Space,
+      Newline,
+      Other
+   };
+
+   CharClass GetCharClass(char c)
+   {
+      unsigned char u = (unsigned char)c;
+      if (c == '\n')
+         return CharClass::Newline;
+      if (c == ' ' || c == '\t')
+         return CharClass::Space;
+      if (isalnum(u) || c == '_' || u >= 0x80) //treat utf-8 bytes as part of words
+         return CharClass::Word;
+      return CharClass::Other;
+   }
+}
+
+void CodeEntry::GetWordRange(int pos, int& start, int& end) const
+{
+   const int length = (int)mString.length();
+   pos = ofClamp(pos, 0, length);
+   start = end = pos;
+
+   //clicking just after the end of a word selects that word
+   if ((pos == length || GetCharClass(mString[pos]) != CharClass::Word) && pos > 0 && GetCharClass(mString[pos - 1]) == CharClass::Word)
+      --pos;
+   if (pos >= length)
+      return;
+
+   CharClass charClass = GetCharClass(mString[pos]);
+   if (charClass == CharClass::Newline)
+      return;
+   start = pos;
+   end = pos + 1;
+   if (charClass == CharClass::Other)
+      return; //punctuation is selected one character at a time
+
+   while (start > 0 && GetCharClass(mString[start - 1]) == charClass)
+      --start;
+   while (end < length && GetCharClass(mString[end]) == charClass)
+      ++end;
+}
+
+void CodeEntry::GetLineRange(int pos, int& start, int& end) const
+{
+   const int length = (int)mString.length();
+   pos = ofClamp(pos, 0, length);
+   start = pos;
+   while (start > 0 && mString[start - 1] != '\n')
+      --start;
+   end = pos;
+   while (end < length && mString[end] != '\n')
+      ++end;
+   if (end < length)
+      ++end; //include the line break, so that the whole line can be cut or moved
+}
+
+void CodeEntry::GetSelectionUnitRange(int pos, int& start, int& end) const
+{
+   if (mMouseSelectionUnit == SelectionUnit::Word)
+      GetWordRange(pos, start, end);
+   else if (mMouseSelectionUnit == SelectionUnit::Line)
+      GetLineRange(pos, start, end);
+   else
+      start = end = pos;
+}
+
+void CodeEntry::UpdateMouseSelection(float x, float y)
+{
+   int pos = GetCaretPositionForMouse(x, y);
+   if (mMouseSelectionUnit == SelectionUnit::Character)
+   {
+      mCaretPosition2 = mMouseSelectionAnchorStart;
+      MoveCaret(pos, false);
+      mCaretPosition2 = mMouseSelectionAnchorStart;
+   }
+   else
+   {
+      //extend by whole words/lines, keeping the one that was first clicked selected
+      int start, end;
+      GetSelectionUnitRange(pos, start, end);
+      int anchor, caret;
+      if (start < mMouseSelectionAnchorStart)
+      {
+         anchor = mMouseSelectionAnchorEnd;
+         caret = start;
+      }
+      else
+      {
+         anchor = mMouseSelectionAnchorStart;
+         caret = MAX(end, mMouseSelectionAnchorEnd);
+      }
+      MoveCaret(caret, false);
+      mCaretPosition2 = anchor;
+   }
+
+   mWantToShowAutocomplete = false;
+   OnCodeUpdated();
+}
+
+void CodeEntry::UpdateMouseSelectionAutoscroll()
+{
+   double now = juce::Time::getMillisecondCounterHiRes();
+   double elapsedMs = MIN(now - mLastAutoscrollMs, 100);
+   mLastAutoscrollMs = now;
+
+   if (!mMouseSelecting)
+      return;
+
+   //when dragging outside of the editor, keep scrolling, faster the further away the mouse is
+   auto getOverflow = [](float pos, float size)
+   {
+      if (pos < 0)
+         return pos;
+      if (pos > size)
+         return pos - size;
+      return 0.0f;
+   };
+   float overflowX = getOverflow(mLastMousePos.x, mWidth);
+   float overflowY = getOverflow(mLastMousePos.y, mHeight);
+   if (overflowX == 0 && overflowY == 0)
+      return;
+
+   const float kPixelsPerSecondPerPixel = 10;
+   auto lines = GetLines(false);
+   float maxLineWidth = 0;
+   for (const auto& line : lines)
+      maxLineWidth = MAX(maxLineWidth, line.length() * mCharWidth);
+   float maxScrollX = MAX(0, maxLineWidth + mCharWidth - mWidth);
+   float maxScrollY = MAX(0, lines.size() * mCharHeight - mHeight);
+
+   ofVec2f oldScroll = mScroll;
+   mScroll.x = ofClamp(mScroll.x + overflowX * kPixelsPerSecondPerPixel * elapsedMs / 1000, 0, MAX(maxScrollX, mScroll.x));
+   mScroll.y = ofClamp(mScroll.y + overflowY * kPixelsPerSecondPerPixel * elapsedMs / 1000, 0, MAX(maxScrollY, mScroll.y));
+   if (mScroll.x != oldScroll.x || mScroll.y != oldScroll.y)
+      UpdateMouseSelection(mLastMousePos.x, mLastMousePos.y);
 }
 
 void CodeEntry::MakeActive()
@@ -1318,6 +1504,13 @@ bool CodeEntry::MouseMoved(float x, float y)
       return true;
    }
 
+   if (mMouseSelecting)
+   {
+      mLastMousePos.set(x, y);
+      UpdateMouseSelection(x, y);
+      return true;
+   }
+
    mScrollbarHover = mHovered ? GetScrollbarAt(x, y) : Scrollbar::None;
    return false;
 }
@@ -1325,12 +1518,9 @@ bool CodeEntry::MouseMoved(float x, float y)
 void CodeEntry::MouseReleased()
 {
    mScrollbarDrag = Scrollbar::None;
+   mMouseSelecting = false;
 }
 
-namespace
-{
-   const float kScrollbarGrabSize = 8;
-}
 
 void CodeEntry::GetScrollContentSize(float& width, float& height)
 {
