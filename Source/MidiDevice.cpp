@@ -95,7 +95,8 @@ namespace
    juce::Array<juce::MidiDeviceInfo> sConnectedInputDevices;
 
    //tells us right away when devices are plugged/unplugged, so a quick unplug and replug isn't missed between the periodic refreshes
-   std::unique_ptr<juce::MidiDeviceListConnection> sDeviceListConnection;
+   //a raw pointer on purpose: if a MidiDevice is still alive at exit, the connection is leaked rather than destroyed during static destruction, after juce has shut down (that crashed on quit)
+   juce::MidiDeviceListConnection* sDeviceListConnection{ nullptr };
    std::atomic<bool> sDeviceListChanged{ false };
 
    bool IsInputPresent(const juce::String& identifier)
@@ -139,10 +140,10 @@ MidiDevice::MidiDevice(MidiDeviceListener* listener)
    sAllDevices.push_back(this);
 
    if (sDeviceListConnection == nullptr)
-      sDeviceListConnection = std::make_unique<juce::MidiDeviceListConnection>(juce::MidiDeviceListConnection::make([]
-                                                                                                                    {
-                                                                                                                       sDeviceListChanged = true;
-                                                                                                                    }));
+      sDeviceListConnection = new juce::MidiDeviceListConnection(juce::MidiDeviceListConnection::make([]
+                                                                                                     {
+                                                                                                        sDeviceListChanged = true;
+                                                                                                     }));
 }
 
 MidiDevice::~MidiDevice()
@@ -150,7 +151,10 @@ MidiDevice::~MidiDevice()
    DisconnectInput();
    RemoveFromVector(this, sAllDevices);
    if (sAllDevices.empty())
-      sDeviceListConnection.reset(); //don't leave this for static destruction, after juce has shut down
+   {
+      delete sDeviceListConnection;
+      sDeviceListConnection = nullptr;
+   }
    if (mMidiOut.get())
       mMidiOut->stopBackgroundThread();
 }

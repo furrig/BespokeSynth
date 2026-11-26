@@ -68,3 +68,6 @@ Also, keyboard shortcuts that use **Cmd** no longer:
 
 ### Fixed crashes with some VST3 plugins
 Some VST3 plugins made with a different version of the same audio framework Bespoke uses (for example the **gearmulator** synths) could crash Bespoke as soon as they were loaded. Bespoke and those plugins no longer interfere with each other, so these plugins load and run normally.
+
+### Fixed a hang when quitting
+Since the "all input" MIDI option was added upstream, quitting Bespoke could freeze it. The app never closed and used 100% CPU until you force-quit it. Bespoke now quits normally.
