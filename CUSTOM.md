@@ -71,3 +71,47 @@ Some VST3 plugins made with a different version of the same audio framework Besp
 
 ### Fixed a hang when quitting
 Since the "all input" MIDI option was added upstream, quitting Bespoke could freeze it. The app never closed and used 100% CPU until you force-quit it. Bespoke now quits normally.
+
+---
+
+## Installing this build (macOS)
+
+The install script builds the app from source and installs it as **BespokeSynth Custom** in `/Applications`, alongside the official **BespokeSynth**. The official app isn't modified. Both can be installed together, and Spotlight and the Dock show them under their own names.
+
+The script installs nothing system-wide. The Python it needs is the same python.org Python 3.10 the official app uses. It's downloaded and unpacked inside the repository, under `ignore/`, then copied into the app.
+
+### What you need first
+- **Xcode Command Line Tools**: `xcode-select --install`, or the full Xcode
+- **CMake**: `brew install cmake` with [Homebrew](https://brew.sh), or the installer from cmake.org
+- An internet connection the first time, to download Python 3.10 and the script autocomplete package (jedi)
+
+### First install
+```sh
+git clone --recurse-submodules -b main-custom https://github.com/furrig/BespokeSynth.git
+cd BespokeSynth
+scripts/install_custom_mac.sh
+```
+
+If you already have a clone, switch it to this branch and fetch the libraries first:
+```sh
+git checkout main-custom
+git pull
+git submodule update --init --recursive
+scripts/install_custom_mac.sh
+```
+
+The first build takes a while. Later runs only rebuild what changed.
+
+### Updating
+Quit BespokeSynth Custom, then run:
+```sh
+git pull
+git submodule update --init --recursive
+scripts/install_custom_mac.sh
+```
+
+### Good to know
+- If BespokeSynth Custom is running, the script stops without changing the installed app. Quit the app and run the script again.
+- The build uses 10 parallel jobs. On a machine with less memory or fewer cores, use fewer jobs, for example `JOBS=4 scripts/install_custom_mac.sh`.
+- Your settings, layouts and saved patches are shared with the official app: both use the `Documents/BespokeSynth` folder.
+- To uninstall, delete `/Applications/BespokeSynth Custom.app`. The build files are in `ignore/` inside the repository, and you can delete them too.
