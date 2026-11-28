@@ -62,6 +62,11 @@ Also, keyboard shortcuts that use **Cmd** no longer:
 - start typing a value into the slider or text field under the mouse
 - play notes on a keyboard module under the mouse.
 
+### Copy the path of what's under the mouse: Cmd-Shift-C
+Hover over a control or a module and press **Cmd-Shift-C** to copy its path to the clipboard, for example `oscillator~volume` for a control or `oscillator` for a module. You can then paste it anywhere, including other apps. This also works while you're typing in the script editor.
+
+**Cmd-C** over a control still copies its value, as before. In the script editor, **Cmd-Shift-V** still types the hovered path straight into the code.
+
 ---
 
 ## Stability (macOS)

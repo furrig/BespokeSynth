@@ -1212,6 +1212,21 @@ void ModularSynth::KeyPressed(int key, bool isRepeat)
    if (!isRepeat)
       mHideTooltipsUntilMouseMove = true;
 
+   //cmd+shift+c: copy the path of the hovered control (or module) to the clipboard
+   if (KeyToUpper(key) == 'C' && GetKeyModifiers() == (kModifier_Command | kModifier_Shift) && !isRepeat)
+   {
+      IClickable* hovered = nullptr;
+      if (gHoveredUIControl != nullptr)
+         hovered = gHoveredUIControl;
+      else if (gHoveredModule != nullptr)
+         hovered = gHoveredModule;
+      if (hovered != nullptr)
+      {
+         TheSynth->CopyTextToClipboard(hovered->Path());
+         return;
+      }
+   }
+
    if (gHoveredUIControl &&
        IKeyboardFocusListener::GetActiveKeyboardFocus() == nullptr &&
        !isRepeat)
