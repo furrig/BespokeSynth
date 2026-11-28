@@ -40,6 +40,23 @@ Before, if a script was loaded from a file with **hotload** turned on, reopening
 
 The patch now remembers the script file, so hotload keeps working after you reopen it. The script dropdown also still points to the right file when you've added or removed files in your scripts folder since saving.
 
+### Scripts can find out more about modules and controls
+New Python functions tell a script what it's working with:
+
+- **`module.get(name).get_type()`** returns a module's type (`oscillator`, `notesequencer`, …), even after the module was renamed. **`get_category()`** returns the category shown in the spawn menu (`synths`, `audio effects`, …).
+- **`module.get(name).get_control_info("volume")`** describes a control: what kind it is (slider, checkbox, dropdown, button, text, grid), its current value, its range and the text Bespoke shows for it. For a dropdown or radio button it lists every option with the value it sets. Before, a script only got a number and had to guess the rest.
+- **`bespoke.get_controls(name, include_hidden=True)`** also lists controls that exist but aren't on screen right now, such as an oscillator's envelope sliders when the envelope view is closed. Without `include_hidden`, it works as before.
+
+### Scripts can load plugins
+Before, a script could only create an empty plugin module; picking the plugin had to be done by hand from the menu.
+
+- **`bespoke.get_plugins()`** lists the plugins Bespoke has scanned, as the plugin menu shows them: name, maker, format, category, and whether it's an instrument or an effect.
+- **`module.create_plugin("ValhallaSupermassive", x, y)`** creates a plugin module with that plugin in it. Give the plugin's name (or part of it) or its identifier from `get_plugins()`. If the name matches several plugins, the error lists them so you can pick one.
+- Plugins take a moment to load. **`vstplugin.get(name).get_plugin_status()`** tells a script whether the plugin is still loading, ready, or failed (and why).
+
+### Fixed crashes when scripts used plugin, sampler and drum modules
+Once a script had used the Python functions for plugin modules (`vstplugin`), `sampleplayer`, `midicontroller`, `drumplayer` or `beats`, the general module functions on those modules could read the wrong data and crash Bespoke, for example right after creating a plugin. They now work correctly.
+
 ### Script editor improvements
 - **Select text with the mouse.** Click and drag to select code, just like in any text editor. If you drag past the top or bottom edge, the code keeps scrolling, faster the further away the mouse is. **Double-click** selects a word, and **triple-click** selects the whole line. Keep the mouse button held after a double- or triple-click to extend the selection word by word or line by line. **Shift-click** extends the current selection.
 - **Page Up / Page Down** move through the code one screen at a time. Hold **Shift** to select text while doing so.

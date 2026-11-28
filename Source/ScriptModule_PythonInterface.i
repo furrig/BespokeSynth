@@ -48,6 +48,13 @@
 #include "Amplifier.h"
 #include "SessionOrganizer.h"
 #include "TrackOrganizer.h"
+#include "Slider.h"
+#include "Checkbox.h"
+#include "DropdownList.h"
+#include "RadioButton.h"
+#include "ClickButton.h"
+#include "TextEntry.h"
+#include "UIGrid.h"
 
 #include "leathers/push"
 #include "leathers/unused-value"
@@ -58,6 +65,151 @@
 
 namespace py = pybind11;
 using namespace pybind11::literals;
+
+namespace
+{
+   //same names as the module documentation (HelpDisplay)
+   std::string GetCategoryName(ModuleCategory category)
+   {
+      switch (category)
+      {
+         case kModuleCategory_Note: return "note effects";
+         case kModuleCategory_Synth: return "synths";
+         case kModuleCategory_Audio: return "audio effects";
+         case kModuleCategory_Instrument: return "instruments";
+         case kModuleCategory_Processor: return "effect chain";
+         case kModuleCategory_Modulator: return "modulators";
+         case kModuleCategory_Pulse: return "pulse";
+         case kModuleCategory_Other: return "other";
+         case kModuleCategory_Unknown: return "unknown";
+      }
+      return "unknown";
+   }
+
+   py::dict GetControlInfo(IUIControl* control)
+   {
+      py::dict info;
+      float value = control->GetValue();
+      info["path"] = control->Path();
+      info["value"] = value;
+      //no range for dropdowns and radio buttons: only their label values are valid, see "labels"
+      if (dynamic_cast<DropdownList*>(control) == nullptr && dynamic_cast<RadioButton*>(control) == nullptr)
+      {
+         float min = 0, max = 1;
+         control->GetRange(min, max);
+         info["min"] = min;
+         info["max"] = max;
+      }
+      info["showing"] = control->IsShowing();
+
+      std::string kind = "other";
+      if (dynamic_cast<FloatSlider*>(control) != nullptr)
+      {
+         kind = "slider";
+      }
+      else if (dynamic_cast<IntSlider*>(control) != nullptr)
+      {
+         kind = "int";
+      }
+      else if (dynamic_cast<Checkbox*>(control) != nullptr)
+      {
+         kind = "checkbox";
+      }
+      else if (auto* dropdown = dynamic_cast<DropdownList*>(control))
+      {
+         //labels carry the value to set, which isn't always the position in the list
+         kind = "dropdown";
+         py::list labels;
+         for (int i = 0; i < dropdown->GetNumValues(); ++i)
+         {
+            DropdownListElement element = dropdown->GetElement(i);
+            labels.append(py::dict("label"_a = element.mLabel, "value"_a = element.mValue));
+         }
+         info["labels"] = labels;
+      }
+      else if (auto* radio = dynamic_cast<RadioButton*>(control))
+      {
+         kind = "radio";
+         py::list labels;
+         for (int i = 0; i < radio->GetNumValues(); ++i)
+         {
+            RadioButtonElement element = radio->GetElement(i);
+            labels.append(py::dict("label"_a = element.mLabel, "value"_a = element.mValue));
+         }
+         info["labels"] = labels;
+      }
+      else if (dynamic_cast<ClickButton*>(control) != nullptr)
+      {
+         kind = "button";
+      }
+      else if (auto* text = dynamic_cast<TextEntry*>(control))
+      {
+         kind = "text";
+         info["text"] = std::string(text->GetText());
+      }
+      else if (auto* grid = dynamic_cast<UIGrid*>(control))
+      {
+         kind = "grid";
+         info["cols"] = grid->GetCols();
+         info["rows"] = grid->GetRows();
+      }
+      info["kind"] = kind;
+
+      std::string display = control->GetDisplayValue(value);
+      if (display != "unimplemented")
+         info["display"] = display;
+      return info;
+   }
+
+   py::dict GetPluginInfo(const juce::PluginDescription& desc)
+   {
+      return py::dict("name"_a = desc.name.toStdString(),
+                      "manufacturer"_a = desc.manufacturerName.toStdString(),
+                      "format"_a = desc.pluginFormatName.toStdString(),
+                      "category"_a = desc.category.toStdString(),
+                      "identifier"_a = desc.createIdentifierString().toStdString(),
+                      "instrument"_a = desc.isInstrument);
+   }
+
+   //by identifier (any scanned format), then by name among the plugins the spawn menu offers: exact, then partial
+   juce::PluginDescription FindPlugin(const std::string& query)
+   {
+      std::vector<juce::PluginDescription> available;
+      VSTLookup::GetAvailableVSTs(available); //also loads the scanned list the first time
+
+      juce::String wanted(query);
+      for (const auto& desc : TheSynth->GetKnownPluginList().getTypes())
+      {
+         if (desc.createIdentifierString() == wanted)
+            return desc;
+      }
+
+      std::vector<juce::PluginDescription> matches;
+      for (const auto& desc : available)
+      {
+         if (desc.name.equalsIgnoreCase(wanted))
+            matches.push_back(desc);
+      }
+      if (matches.empty())
+      {
+         for (const auto& desc : available)
+         {
+            if (desc.name.containsIgnoreCase(wanted))
+               matches.push_back(desc);
+         }
+      }
+
+      if (matches.size() == 1)
+         return matches[0];
+      if (matches.empty())
+         throw py::value_error("no plugin matches '" + query + "', see bespoke.get_plugins()");
+
+      std::string candidates;
+      for (const auto& desc : matches)
+         candidates += "\n" + desc.name.toStdString() + " (" + desc.pluginFormatName.toStdString() + "): " + desc.createIdentifierString().toStdString();
+      throw py::value_error("'" + query + "' matches several plugins, pass one of these identifiers:" + candidates);
+   }
+}
 
 PYBIND11_EMBEDDED_MODULE(bespoke, m) {
    // `m` is a `py::module` which is used to bind functions and classes
@@ -167,7 +319,7 @@ PYBIND11_EMBEDDED_MODULE(bespoke, m) {
       }
       return paths;
    });
-   m.def("get_controls", [](std::string path)
+   m.def("get_controls", [](std::string path, bool include_hidden)
    {
       const auto module = TheSynth->FindModule(std::move(path));
       std::vector<std::string> paths;
@@ -175,11 +327,22 @@ PYBIND11_EMBEDDED_MODULE(bespoke, m) {
          return paths;
       for (auto* control : module->GetUIControls())
       {
-         if (control && control->IsShowing())
+         if (control && (include_hidden || control->IsShowing()))
             paths.push_back(control->Path());
       }
       return paths;
+   }, "path"_a, "include_hidden"_a = false);
+   ///include_hidden: also list controls that aren't currently drawn, such as an oscillator's envelope sliders
+   m.def("get_plugins", []()
+   {
+      std::vector<juce::PluginDescription> vsts;
+      VSTLookup::GetAvailableVSTs(vsts);
+      py::list ret;
+      for (const auto& desc : vsts)
+         ret.append(GetPluginInfo(desc));
+      return ret;
    });
+   ///scanned plugins, as offered by the spawn menu: list of {name, manufacturer, format, category, identifier, instrument}
    m.def("location_recall", [](char location)
    {
       TheSynth->GetLocationZoomer()->MoveToLocation(location);
@@ -513,7 +676,7 @@ PYBIND11_EMBEDDED_MODULE(sampleplayer, m)
       ScriptModule::sMostRecentLineExecutedModule->ClearContext();
       return ret;
    }, py::return_value_policy::reference);
-   py::class_<SamplePlayer, IDrawableModule>(m, "sampleplayer")
+   py::class_<SamplePlayer, IDrawableModule>(m, "sampleplayer", py::multiple_inheritance())
       .def("set_cue_point", [](SamplePlayer& player, int pitch, float startSeconds, float lengthSeconds, float speed)
       {
          player.SetCuePoint(pitch, startSeconds, lengthSeconds, speed);
@@ -549,7 +712,7 @@ PYBIND11_EMBEDDED_MODULE(midicontroller, m)
       ScriptModule::sMostRecentLineExecutedModule->ClearContext();
       return ret;
    }, py::return_value_policy::reference);
-   py::class_<MidiController, IDrawableModule> midiControllerClass(m, "midicontroller");
+   py::class_<MidiController, IDrawableModule> midiControllerClass(m, "midicontroller", py::multiple_inheritance());
    py::enum_<MidiMessageType>(midiControllerClass, "MidiMessageType")
       .value("Note", MidiMessageType::kMidiMessage_Note)
       .value("Control", MidiMessageType::kMidiMessage_Control)
@@ -756,7 +919,7 @@ PYBIND11_EMBEDDED_MODULE(drumplayer, m)
       ScriptModule::sMostRecentLineExecutedModule->ClearContext();
       return ret;
    }, py::return_value_policy::reference);
-   py::class_<DrumPlayer, IDrawableModule>(m, "drumplayer")
+   py::class_<DrumPlayer, IDrawableModule>(m, "drumplayer", py::multiple_inheritance())
       .def("import_sampleplayer_cue", [](DrumPlayer& drumPlayer, SamplePlayer* samplePlayer, int srcCueIndex, int destHitIndex)
       {
          drumPlayer.ImportSampleCuePoint(samplePlayer, srcCueIndex, destHitIndex);
@@ -773,7 +936,7 @@ PYBIND11_EMBEDDED_MODULE(vstplugin, m)
       ScriptModule::sMostRecentLineExecutedModule->ClearContext();
       return ret;
    }, py::return_value_policy::reference);
-   py::class_<VSTPlugin, IDrawableModule> vstpluginClass(m, "vstplugin");
+   py::class_<VSTPlugin, IDrawableModule> vstpluginClass(m, "vstplugin", py::multiple_inheritance());
       vstpluginClass
          .def("send_cc", [](VSTPlugin& vstplugin, int ctl, int value, int channel)
       {
@@ -786,7 +949,20 @@ PYBIND11_EMBEDDED_MODULE(vstplugin, m)
          .def("send_data", [](VSTPlugin& vstplugin, int a, int b, int c)
       {
          vstplugin.SendMidi(juce::MidiMessage(a, b, c));
+      })
+         .def("get_plugin_status", [](VSTPlugin& vstplugin)
+      {
+         py::dict status("name"_a = vstplugin.GetPluginName(),
+                         "format"_a = vstplugin.GetPluginFormatName(),
+                         "id"_a = vstplugin.GetPluginId(),
+                         "loading"_a = vstplugin.IsPluginLoading(),
+                         "ready"_a = vstplugin.IsPluginReady(),
+                         "error"_a = vstplugin.GetLoadError());
+         if (auto* instance = dynamic_cast<juce::AudioPluginInstance*>(vstplugin.GetAudioProcessor()))
+            status["identifier"] = instance->getPluginDescription().createIdentifierString().toStdString();
+         return status;
       });
+      ///plugins load asynchronously: poll until "loading" is false, then check "ready" and "error"
 }
 
 PYBIND11_EMBEDDED_MODULE(snapshots, m)
@@ -866,7 +1042,7 @@ PYBIND11_EMBEDDED_MODULE(beats, m)
       ScriptModule::sMostRecentLineExecutedModule->ClearContext();
       return ret;
    }, py::return_value_policy::reference);
-   py::class_<Beats, IDrawableModule>(m, "beats")
+   py::class_<Beats, IDrawableModule>(m, "beats", py::multiple_inheritance())
       .def("add_sample", [](Beats& beats, std::string sample)
       {
          std::vector<std::string> files;
@@ -971,7 +1147,36 @@ PYBIND11_EMBEDDED_MODULE(module, m)
       spawnable.mLabel = moduleType;
       return TheSynth->SpawnModuleOnTheFly(spawnable, x, y);
    }, py::return_value_policy::reference);
+   m.def("create_plugin", [](std::string plugin, float x, float y)
+   {
+      ModuleFactory::Spawnable spawnable;
+      spawnable.mSpawnMethod = ModuleFactory::SpawnMethod::Plugin;
+      spawnable.mPluginDesc = FindPlugin(plugin);
+      spawnable.mLabel = spawnable.mPluginDesc.name.toStdString();
+      return TheSynth->SpawnModuleOnTheFly(spawnable, x, y);
+   }, py::return_value_policy::reference);
+   ///plugin: identifier or name (exact, then partial) from bespoke.get_plugins(). the plugin loads asynchronously, see vstplugin get_plugin_status()
+   ///example: module.create_plugin("Surge XT", 100, 200)
    py::class_<IDrawableModule>(m, "module")
+      .def("get_type", [](IDrawableModule& module)
+      {
+         return module.GetTypeName();
+      })
+      .def("get_category", [](IDrawableModule& module)
+      {
+         return GetCategoryName(module.GetModuleCategory());
+      })
+      .def("get_control_info", [](IDrawableModule& module, std::string path) -> py::object
+      {
+         ScriptModule::sMostRecentLineExecutedModule->SetContext();
+         IUIControl* control = module.FindUIControl(path.c_str(), false);
+         ScriptModule::sMostRecentLineExecutedModule->ClearContext();
+         if (control == nullptr)
+            return py::none();
+         return GetControlInfo(control);
+      })
+      ///{path, kind, value, min?, max?, showing, display?, labels?, text?, cols?, rows?}, or None if there's no such control. dropdowns and radio buttons have labels instead of min/max
+      ///kind: slider, int, checkbox, dropdown, radio, button, text, grid or other. labels: [{label, value}], set the value to pick a label
       .def("set_position", [](IDrawableModule& module, float x, float y)
       {
          module.SetPosition(x,y);

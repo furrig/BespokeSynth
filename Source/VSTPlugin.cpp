@@ -553,6 +553,7 @@ void VSTPlugin::LoadVST(juce::PluginDescription desc)
 
    const int requestId = ++mLoadRequestId;
    mPluginLoading = true;
+   mLoadError.clear();
    mLoadingPluginId = desc.createIdentifierString();
    mPluginName = desc.name.isNotEmpty() ? desc.name.toStdString() + " (loading)" : "loading";
 
@@ -641,6 +642,7 @@ void VSTPlugin::OnPluginCreated(std::unique_ptr<juce::AudioPluginInstance> insta
    if (instance == nullptr)
    {
       TheSynth->LogEvent("error loading VST: " + error.toStdString(), kLogEventType_Error);
+      mLoadError = error.isNotEmpty() ? error.toStdString() : "unknown error";
 
       //any pending state and placeholder sliders stay, so saving this patch again doesn't lose them
       if (mModuleSaveData.HasProperty("pluginId") && mModuleSaveData.GetString("pluginId").length() > 0)

@@ -93,6 +93,13 @@ public:
 
    juce::AudioProcessor* GetAudioProcessor() { return mPlugin.get(); }
 
+   std::string GetPluginName() const;
+   std::string GetPluginFormatName() const;
+   std::string GetPluginId() const;
+   bool IsPluginLoading() const { return mPluginLoading; }
+   bool IsPluginReady() const { return mPluginReady; }
+   std::string GetLoadError() const { return mLoadError; } //why the last load failed, empty otherwise
+
    void SetVST(juce::PluginDescription pluginDesc);
    void OnVSTWindowClosed();
 
@@ -151,9 +158,6 @@ private:
    void LoadVSTFromSaveData(FileStreamIn& in, int rev);
    void GetVSTFileDesc(std::string vstName, juce::PluginDescription& desc);
 
-   std::string GetPluginName() const;
-   std::string GetPluginFormatName() const;
-   std::string GetPluginId() const;
    void CreateParameterSliders();
    void RefreshPresetFiles();
 
@@ -205,6 +209,7 @@ private:
    };
    PendingPluginState mPendingState;
    std::string mPluginName;
+   std::string mLoadError;
    std::string mPluginFormatName;
    std::string mPluginId;
    std::unique_ptr<VSTWindow> mWindow;
